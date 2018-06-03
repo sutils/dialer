@@ -34,10 +34,11 @@ func (c *CmdStdinWriter) Write(p []byte) (n int, err error) {
 			return 0, err
 		}
 	}
+	n = len(p)
 	if len(c.Replace) > 0 {
 		p = bytes.Replace(p, c.Replace, []byte{}, -1)
 	}
-	n, err = c.Writer.Write(p)
+	_, err = c.Writer.Write(p)
 	return
 }
 

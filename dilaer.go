@@ -26,6 +26,18 @@ func NewPool() (pool *Pool) {
 	return
 }
 
+//AddDialer will run Dialer.Bootstrap, then append dialer to pool.
+func (d *Pool) AddDialer(dialers ...Dialer) (err error) {
+	for _, dialer := range dialers {
+		err = dialer.Bootstrap()
+		if err != nil {
+			break
+		}
+		d.Dialers = append(d.Dialers, dialer)
+	}
+	return
+}
+
 //Dial the uri by dialer poo
 func (d *Pool) Dial(sid uint64, uri string) (r io.ReadWriteCloser, err error) {
 	for _, dialer := range d.Dialers {
