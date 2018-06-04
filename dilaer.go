@@ -3,12 +3,15 @@ package dialer
 import (
 	"fmt"
 	"io"
+
+	"github.com/Centny/gwf/util"
 )
 
 // Dialer is the interface that wraps the dialer
 type Dialer interface {
+	Name() string
 	//initial dialer
-	Bootstrap() error
+	Bootstrap(options util.Map) error
 	//match uri
 	Matched(uri string) bool
 	//dial raw connection
@@ -27,9 +30,9 @@ func NewPool() (pool *Pool) {
 }
 
 //AddDialer will run Dialer.Bootstrap, then append dialer to pool.
-func (d *Pool) AddDialer(dialers ...Dialer) (err error) {
+func (d *Pool) AddDialer(options util.Map, dialers ...Dialer) (err error) {
 	for _, dialer := range dialers {
-		err = dialer.Bootstrap()
+		err = dialer.Bootstrap(options.MapVal(dialer.Name()))
 		if err != nil {
 			break
 		}

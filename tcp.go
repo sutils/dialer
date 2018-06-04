@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+
+	"github.com/Centny/gwf/util"
 )
 
 //TCPDialer is an implementation of the Dialer interface for dial tcp connections.
@@ -19,8 +21,13 @@ func NewTCPDialer() *TCPDialer {
 	}
 }
 
+//Name will return dialer name
+func (t *TCPDialer) Name() string {
+	return "TCP"
+}
+
 //Bootstrap the dialer.
-func (t *TCPDialer) Bootstrap() error {
+func (t *TCPDialer) Bootstrap(options util.Map) error {
 	return nil
 }
 

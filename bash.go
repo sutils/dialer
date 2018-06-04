@@ -15,6 +15,7 @@ var CtrlC = []byte{255, 244, 255, 253, 6}
 
 type Cmd struct {
 	Raw    *exec.Cmd
+	Dir    string
 	Name   string
 	PS1    string
 	pipe   *os.File
@@ -32,6 +33,7 @@ func NewCmd(name, ps1, shell string) (cmd *Cmd) {
 		PS1:  ps1,
 		Raw:  exec.Command(shell),
 	}
+	cmd.Raw.Dir = cmd.Dir
 	cmd.Raw.Env = os.Environ()
 	return
 }

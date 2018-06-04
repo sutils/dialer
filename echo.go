@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/url"
 	"sync"
+
+	"github.com/Centny/gwf/util"
 )
 
 //EchoDialer is an implementation of the Dialer interface for echo tcp connection.
@@ -16,8 +18,13 @@ func NewEchoDialer() (dialer *EchoDialer) {
 	return
 }
 
+//Name will return dialer name
+func (e *EchoDialer) Name() string {
+	return "echo"
+}
+
 //Bootstrap the dialer
-func (e *EchoDialer) Bootstrap() error {
+func (e *EchoDialer) Bootstrap(options util.Map) error {
 	return nil
 }
 

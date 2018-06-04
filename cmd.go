@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
-	"os/exec"
-	"runtime"
 	"sync/atomic"
 
 	"github.com/Centny/gwf/log"
@@ -46,9 +43,10 @@ func (c *CmdStdinWriter) Write(p []byte) (n int, err error) {
 type CmdDialer struct {
 	Replace  []byte
 	CloseTag []byte
-	BASH     string
 	PS1      string
-	Prefix   []byte
+	Dir      string
+	LC       string
+	Prefix   string
 }
 
 //NewCmdDialer will return new CmdDialer
@@ -56,12 +54,22 @@ func NewCmdDialer() *CmdDialer {
 	return &CmdDialer{
 		Replace:  []byte("\r"),
 		CloseTag: CmdCtrlC,
-		BASH:     "bash",
 	}
 }
 
+//Name will return dialer name
+func (c *CmdDialer) Name() string {
+	return "Cmd"
+}
+
 //Bootstrap the dilaer
-func (c *CmdDialer) Bootstrap() error {
+func (c *CmdDialer) Bootstrap(options util.Map) error {
+	if options != nil {
+		c.PS1 = options.StrVal("PS1")
+		c.Dir = options.StrVal("Dir")
+		c.LC = options.StrVal("LC")
+		c.Prefix = options.StrVal("Prefix")
+	}
 	return nil
 }
 
@@ -79,71 +87,45 @@ func (c *CmdDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err er
 	}
 	runnable := remote.Query().Get("exec")
 	log.D("CmdDialer dial to cmd:%v", runnable)
-	if runnable == "bash" {
-		cmd := NewCmd(c.BASH, c.PS1, c.BASH)
-		if len(c.Prefix) > 0 {
-			cmd.Prefix = bytes.NewBuffer(c.Prefix)
-		}
-		cmd.PS1 = c.PS1
-		cmd.Cols, cmd.Rows = 80, 60
-		util.ValidAttrF(`cols,O|I,R:0;rows,O|I,R:0;`, remote.Query().Get, true, &cmd.Cols, &cmd.Rows)
-		err = cmd.Start()
-		raw = cmd
-		return
+	cmd := NewCmd("Cmd", c.PS1, runnable)
+	if len(c.Prefix) > 0 {
+		cmd.Prefix = bytes.NewBuffer([]byte(c.Prefix))
 	}
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("cmd", "/C", runnable)
-	default:
-		cmd = exec.Command(c.BASH, "-c", runnable)
+	cmd.PS1 = c.PS1
+	cmd.Dir = c.Dir
+	ps1 := remote.Query().Get("PS1")
+	if len(ps1) > 0 {
+		cmd.PS1 = ps1
 	}
-	retReader, stdWriter, err := os.Pipe()
-	if err != nil {
-		return
+	cmd.Dir = remote.Query().Get("dir")
+	cmd.Cols, cmd.Rows = 80, 60
+	util.ValidAttrF(`cols,O|I,R:0;rows,O|I,R:0;`, remote.Query().Get, true, &cmd.Cols, &cmd.Rows)
+	lc := remote.Query().Get("LC")
+	if len(lc) < 1 {
+		lc = c.LC
 	}
-	stdin, _ := cmd.StdinPipe()
-	cmd.Stdout = stdWriter
-	cmd.Stderr = stdWriter
-	cmdWriter := &CmdStdinWriter{
-		Writer:   stdin,
-		Replace:  c.Replace,
-		CloseTag: c.CloseTag,
-	}
-	combined := &CombinedReadWriterCloser{
-		Writer: cmdWriter,
-		Reader: retReader,
-		Closer: func() error {
-			log.D("CmdDialer will kill the cmd(%v)", sid)
-			stdWriter.Close()
-			stdin.Close()
-			cmd.Process.Kill()
-			return nil
-		},
-	}
-	//
-	switch remote.Query().Get("LC") {
+	switch lc {
 	case "zh_CN.GBK":
-		combined.Reader = transform.NewReader(combined.Reader, simplifiedchinese.GBK.NewDecoder())
-		cmdWriter.Writer = transform.NewWriter(cmdWriter.Writer, simplifiedchinese.GBK.NewEncoder())
+		raw = &CombinedReadWriterCloser{
+			Reader: transform.NewReader(cmd, simplifiedchinese.GBK.NewDecoder()),
+			Writer: transform.NewWriter(cmd, simplifiedchinese.GBK.NewEncoder()),
+			Closer: cmd.Close,
+		}
 	case "zh_CN.GB18030":
-		combined.Reader = transform.NewReader(combined.Reader, simplifiedchinese.GB18030.NewDecoder())
-		cmdWriter.Writer = transform.NewWriter(cmdWriter.Writer, simplifiedchinese.GB18030.NewEncoder())
+		raw = &CombinedReadWriterCloser{
+			Reader: transform.NewReader(cmd, simplifiedchinese.GB18030.NewDecoder()),
+			Writer: transform.NewWriter(cmd, simplifiedchinese.GB18030.NewEncoder()),
+			Closer: cmd.Close,
+		}
 	default:
+		raw = cmd
 	}
-	raw = combined
 	err = cmd.Start()
-	if err == nil {
-		go func() {
-			cmd.Wait()
-			combined.Close()
-		}()
-	}
 	return
 }
 
 func (c *CmdDialer) String() string {
-	return "CmdDialer"
+	return "Cmd"
 }
 
 //CombinedReadWriterCloser is an implementation of io.ReadWriteClose to combined reader/writer/closer

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Centny/gwf/log"
+	"github.com/Centny/gwf/util"
 	"golang.org/x/net/webdav"
 )
 
@@ -35,8 +36,13 @@ func NewWebDialer() (dialer *WebDialer) {
 	return
 }
 
+//Name will return dialer name
+func (web *WebDialer) Name() string {
+	return "TCP"
+}
+
 //Bootstrap the web dialer
-func (web *WebDialer) Bootstrap() error {
+func (web *WebDialer) Bootstrap(options util.Map) error {
 	go func() {
 		http.Serve(web, web)
 		close(web.accept)
