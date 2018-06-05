@@ -47,6 +47,7 @@ type CmdDialer struct {
 	Dir      string
 	LC       string
 	Prefix   string
+	Env      []string
 }
 
 //NewCmdDialer will return new CmdDialer
@@ -69,6 +70,9 @@ func (c *CmdDialer) Bootstrap(options util.Map) error {
 		c.Dir = options.StrVal("Dir")
 		c.LC = options.StrVal("LC")
 		c.Prefix = options.StrVal("Prefix")
+		for k, v := range options.MapVal("Env") {
+			c.Env = append(c.Env, fmt.Sprintf("%v=%v", k, v))
+		}
 	}
 	return nil
 }
@@ -91,13 +95,26 @@ func (c *CmdDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err er
 	if len(c.Prefix) > 0 {
 		cmd.Prefix = bytes.NewBuffer([]byte(c.Prefix))
 	}
-	cmd.PS1 = c.PS1
 	cmd.Dir = c.Dir
+	cmd.Raw.Env = append(cmd.Raw.Env, c.Env...)
 	ps1 := remote.Query().Get("PS1")
 	if len(ps1) > 0 {
 		cmd.PS1 = ps1
 	}
-	cmd.Dir = remote.Query().Get("dir")
+	dir := remote.Query().Get("Dir")
+	if len(dir) > 0 {
+		cmd.Dir = dir
+	}
+	for key, vals := range remote.Query() {
+		switch key {
+		case "PS1":
+		case "Dir":
+		case "LC":
+		case "exec":
+		default:
+			cmd.Raw.Env = append(cmd.Raw.Env, fmt.Sprintf("%v=%v", key, vals[0]))
+		}
+	}
 	cmd.Cols, cmd.Rows = 80, 60
 	util.ValidAttrF(`cols,O|I,R:0;rows,O|I,R:0;`, remote.Query().Get, true, &cmd.Cols, &cmd.Rows)
 	lc := remote.Query().Get("LC")
