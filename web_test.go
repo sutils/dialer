@@ -20,7 +20,7 @@ func TestWebDialer(t *testing.T) {
 		return
 	}
 	dialer := NewWebDialer()
-	dialer.Bootstrap()
+	dialer.Bootstrap(nil)
 	if dialer.Matched("tcp://web?dir=/tmp") {
 		t.Error("error")
 		return

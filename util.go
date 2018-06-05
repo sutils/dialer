@@ -149,7 +149,7 @@ type DuplexPiped struct {
 
 func (d *DuplexPiped) Close() error {
 	if !atomic.CompareAndSwapUint32(&d.closed, 0, 1) {
-		return fmt.Errorf("closed")
+		return fmt.Errorf("DuplexPiped is closed")
 	}
 	d.UpWriter.Close()
 	d.DownWriter.Close()

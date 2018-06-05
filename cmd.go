@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"runtime"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/Centny/gwf/log"
 	"github.com/Centny/gwf/util"
@@ -13,8 +16,8 @@ import (
 	"golang.org/x/text/transform"
 )
 
-//CmdCtrlC is the ctrl-c command on telnet
-var CmdCtrlC = []byte{255, 244, 255, 253, 6}
+//TelnetCtrlC is the ctrl-c command on telnet
+var TelnetCtrlC = []byte{255, 244, 255, 253, 6}
 
 //CmdStdinWriter is writer to handler charset replace and close command.
 type CmdStdinWriter struct {
@@ -23,11 +26,20 @@ type CmdStdinWriter struct {
 	CloseTag []byte
 }
 
+func NewCmdStdinWriter(w io.Writer, replace, closeTag []byte) (writer *CmdStdinWriter) {
+	writer = &CmdStdinWriter{
+		Writer:   w,
+		Replace:  replace,
+		CloseTag: closeTag,
+	}
+	return
+}
+
 func (c *CmdStdinWriter) Write(p []byte) (n int, err error) {
 	if len(c.CloseTag) > 0 {
 		newp := bytes.Replace(p, c.CloseTag, []byte{}, -1)
 		if len(newp) != len(p) {
-			err = fmt.Errorf("closed")
+			err = fmt.Errorf("CmdStdinWriter is closed")
 			return 0, err
 		}
 	}
@@ -41,26 +53,53 @@ func (c *CmdStdinWriter) Write(p []byte) (n int, err error) {
 
 //CmdDialer is an implementation of the Dialer interface for dial command
 type CmdDialer struct {
-	Replace  []byte
-	CloseTag []byte
-	PS1      string
-	Dir      string
-	LC       string
-	Prefix   string
-	Env      []string
+	Replace     []byte
+	CloseTag    []byte
+	PS1         string
+	Dir         string
+	LC          string
+	Prefix      string
+	Env         []string
+	Reuse       int64
+	ReuseDelay  time.Duration
+	running     map[string]*ReusableRWC
+	runningLck  sync.RWMutex
+	loopRunning bool
 }
 
 //NewCmdDialer will return new CmdDialer
 func NewCmdDialer() *CmdDialer {
 	return &CmdDialer{
-		Replace:  []byte("\r"),
-		CloseTag: CmdCtrlC,
+		Replace:     []byte("\r"),
+		CloseTag:    nil,
+		running:     map[string]*ReusableRWC{},
+		runningLck:  sync.RWMutex{},
+		Reuse:       3600000,
+		ReuseDelay:  30 * time.Second,
+		loopRunning: true,
 	}
 }
 
 //Name will return dialer name
 func (c *CmdDialer) Name() string {
 	return "Cmd"
+}
+
+func (c *CmdDialer) loopReuse() {
+	log.D("CmdDailer the reuse time loop is starting")
+	for c.loopRunning {
+		c.runningLck.Lock()
+		now := util.Now()
+		for name, reused := range c.running {
+			if now-reused.Last >= c.Reuse {
+				reused.Destory()
+				delete(c.running, name)
+			}
+		}
+		c.runningLck.Unlock()
+		time.Sleep(c.ReuseDelay)
+	}
+	log.D("CmdDailer the reuse time loop is stopped")
 }
 
 //Bootstrap the dilaer
@@ -73,6 +112,11 @@ func (c *CmdDialer) Bootstrap(options util.Map) error {
 		for k, v := range options.MapVal("Env") {
 			c.Env = append(c.Env, fmt.Sprintf("%v=%v", k, v))
 		}
+		c.Reuse = options.IntValV("reuse", 3600000)
+		c.ReuseDelay = time.Duration(options.IntValV("reuse_delay", 30000)) * time.Millisecond
+	}
+	if c.Reuse > 0 {
+		go c.loopReuse()
 	}
 	return nil
 }
@@ -83,15 +127,44 @@ func (c *CmdDialer) Matched(uri string) bool {
 	return err == nil && target.Scheme == "tcp" && target.Host == "cmd"
 }
 
+func (c *CmdDialer) onCmdPaused(r *ReusableRWC) {
+	c.runningLck.Lock()
+	defer c.runningLck.Unlock()
+	c.running[r.Name] = r
+	r.Last = util.Now()
+	log.D("CmdDialer add session to reuse by %v->%p", r.Name, r)
+}
+
 //Dial will start command and pipe to stdin/stdout
 func (c *CmdDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err error) {
 	remote, err := url.Parse(uri)
 	if err != nil {
 		return
 	}
+	reuse := remote.Query().Get("reuse")
+	var reusable *ReusableRWC
+	if len(reuse) > 0 {
+		c.runningLck.Lock()
+		old, ok := c.running[reuse]
+		delete(c.running, reuse)
+		c.runningLck.Unlock()
+		if ok {
+			log.D("CmdDialer reusing session by %v->%p", reuse, old)
+			old.Resume()
+			fmt.Fprintf(old, "\n")
+			raw = old
+			return
+		}
+	}
 	runnable := remote.Query().Get("exec")
 	log.D("CmdDialer dial to cmd:%v", runnable)
-	cmd := NewCmd("Cmd", c.PS1, runnable)
+	var cmd *Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = NewCmd("Cmd", c.PS1, "cmd", "/C", runnable)
+	default:
+		cmd = NewCmd("Cmd", c.PS1, "bash", "/C", runnable)
+	}
 	if len(c.Prefix) > 0 {
 		cmd.Prefix = bytes.NewBuffer([]byte(c.Prefix))
 	}
@@ -117,27 +190,46 @@ func (c *CmdDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err er
 	}
 	cmd.Cols, cmd.Rows = 80, 60
 	util.ValidAttrF(`cols,O|I,R:0;rows,O|I,R:0;`, remote.Query().Get, true, &cmd.Cols, &cmd.Rows)
+	//
 	lc := remote.Query().Get("LC")
 	if len(lc) < 1 {
 		lc = c.LC
 	}
+	var combined *CombinedRWC
 	switch lc {
 	case "zh_CN.GBK":
-		raw = &CombinedReadWriterCloser{
+		combined = &CombinedRWC{
 			Reader: transform.NewReader(cmd, simplifiedchinese.GBK.NewDecoder()),
-			Writer: transform.NewWriter(cmd, simplifiedchinese.GBK.NewEncoder()),
+			Writer: NewCmdStdinWriter(transform.NewWriter(cmd, simplifiedchinese.GBK.NewEncoder()), c.Replace, c.CloseTag),
 			Closer: cmd.Close,
 		}
 	case "zh_CN.GB18030":
-		raw = &CombinedReadWriterCloser{
+		combined = &CombinedRWC{
 			Reader: transform.NewReader(cmd, simplifiedchinese.GB18030.NewDecoder()),
-			Writer: transform.NewWriter(cmd, simplifiedchinese.GB18030.NewEncoder()),
+			Writer: NewCmdStdinWriter(transform.NewWriter(cmd, simplifiedchinese.GB18030.NewEncoder()), c.Replace, c.CloseTag),
 			Closer: cmd.Close,
 		}
 	default:
-		raw = cmd
+		combined = &CombinedRWC{
+			Reader: cmd,
+			Writer: NewCmdStdinWriter(cmd, c.Replace, c.CloseTag),
+			Closer: cmd.Close,
+		}
 	}
 	err = cmd.Start()
+	if err == nil {
+		reusable = NewReusableRWC(combined)
+		reusable.Name = reuse
+		reusable.Reused = len(reuse) > 0 && c.Reuse > 0
+		reusable.OnPaused = c.onCmdPaused
+		raw = reusable
+	}
+	return
+}
+
+//Shutdown the dialer
+func (c *CmdDialer) Shutdown() (err error) {
+	c.loopRunning = false
 	return
 }
 
@@ -145,8 +237,8 @@ func (c *CmdDialer) String() string {
 	return "Cmd"
 }
 
-//CombinedReadWriterCloser is an implementation of io.ReadWriteClose to combined reader/writer/closer
-type CombinedReadWriterCloser struct {
+//CombinedRWC is an implementation of io.ReadWriteClose to combined reader/writer/closer
+type CombinedRWC struct {
 	io.Reader
 	io.Writer
 	Closer func() error
@@ -154,12 +246,85 @@ type CombinedReadWriterCloser struct {
 }
 
 //Close will call closer only once
-func (c *CombinedReadWriterCloser) Close() (err error) {
+func (c *CombinedRWC) Close() (err error) {
 	if !atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
-		return fmt.Errorf("closed")
+		return fmt.Errorf("ReusableRWC is closed")
 	}
 	if c.Closer != nil {
 		err = c.Closer()
 	}
+	return
+}
+
+//ReusableRWC
+type ReusableRWC struct {
+	Raw      io.ReadWriteCloser
+	paused   uint32
+	Name     string
+	Reused   bool
+	Last     int64
+	OnPaused func(r *ReusableRWC)
+}
+
+func NewReusableRWC(raw io.ReadWriteCloser) (reusable *ReusableRWC) {
+	reusable = &ReusableRWC{
+		Raw:  raw,
+		Last: util.Now(),
+	}
+	return
+}
+
+func (r *ReusableRWC) Write(p []byte) (n int, err error) {
+	if r.Reused && atomic.LoadUint32(&r.paused) == 1 {
+		err = fmt.Errorf("ReusableRWC is paused")
+		return
+	}
+	n, err = r.Raw.Write(p)
+	if err != nil {
+		r.Reused = false
+	}
+	return
+}
+
+func (r *ReusableRWC) Read(b []byte) (n int, err error) {
+	if r.Reused && atomic.LoadUint32(&r.paused) == 1 {
+		err = fmt.Errorf("ReusableRWC is paused")
+		return
+	}
+	n, err = r.Raw.Read(b)
+	if err != nil {
+		r.Reused = false
+	}
+	return
+}
+
+func (r *ReusableRWC) Close() (err error) {
+	if r.Reused {
+		if atomic.CompareAndSwapUint32(&r.paused, 0, 1) {
+			r.Raw.Write([]byte("\n"))
+			r.OnPaused(r)
+			return
+		}
+		err = fmt.Errorf("ReusableRWC is paused")
+	} else {
+		err = r.Raw.Close()
+	}
+	return
+}
+
+func (r *ReusableRWC) Resume() (err error) {
+	if r.Reused {
+		if atomic.CompareAndSwapUint32(&r.paused, 1, 0) {
+			r.Last = util.Now()
+			return
+		}
+		err = fmt.Errorf("ReusableRWC is running")
+	}
+	return
+}
+
+func (r *ReusableRWC) Destory() (err error) {
+	r.Reused = false
+	err = r.Raw.Close()
 	return
 }

@@ -9,7 +9,7 @@ import (
 
 func TestEcho(t *testing.T) {
 	dialer := NewEchoDialer()
-	dialer.Bootstrap()
+	dialer.Bootstrap(nil)
 	if dialer.Matched("tcp://echox") {
 		t.Error("error")
 		return

@@ -7,7 +7,7 @@ import (
 
 func TestTCPDialer(t *testing.T) {
 	tcp := NewTCPDialer()
-	tcp.Bootstrap()
+	tcp.Bootstrap(nil)
 	if !tcp.Matched("tcp://localhost:80") {
 		t.Error("error")
 		return

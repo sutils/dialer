@@ -27,11 +27,11 @@ type Cmd struct {
 	ctrlc  int
 }
 
-func NewCmd(name, ps1, shell string) (cmd *Cmd) {
+func NewCmd(name, ps1, shell string, args ...string) (cmd *Cmd) {
 	cmd = &Cmd{
 		Name: name,
 		PS1:  ps1,
-		Raw:  exec.Command(shell),
+		Raw:  exec.Command(shell, args...),
 	}
 	cmd.Raw.Dir = cmd.Dir
 	cmd.Raw.Env = os.Environ()
@@ -98,7 +98,7 @@ func (c *Cmd) Write(p []byte) (n int, err error) {
 		c.ctrlc += ctrlc
 		if c.ctrlc >= 5 {
 			c.Close()
-			err = fmt.Errorf("closed")
+			err = fmt.Errorf("Cmd is closed")
 			return
 		}
 	} else {
@@ -113,8 +113,12 @@ func (c *Cmd) Read(p []byte) (n int, err error) {
 	return
 }
 
+//Close the command.
 func (c *Cmd) Close() error {
-	return c.pipe.Close()
+	c.pipe.Close()
+	c.tty.Close()
+	c.Raw.Process.Kill()
+	return c.Raw.Wait()
 }
 
 // type CallbackCmd struct {
