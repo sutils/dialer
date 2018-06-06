@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"os/exec"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -69,8 +71,7 @@ type CmdDialer struct {
 
 //NewCmdDialer will return new CmdDialer
 func NewCmdDialer() *CmdDialer {
-	return &CmdDialer{
-		Replace:     []byte("\r"),
+	cmd := &CmdDialer{
 		CloseTag:    nil,
 		running:     map[string]*ReusableRWC{},
 		runningLck:  sync.RWMutex{},
@@ -78,6 +79,10 @@ func NewCmdDialer() *CmdDialer {
 		ReuseDelay:  30 * time.Second,
 		loopRunning: true,
 	}
+	if runtime.GOOS == "windows" {
+		// cmd.Replace = []byte("\r")
+	}
+	return cmd
 }
 
 //Name will return dialer name
@@ -158,38 +163,59 @@ func (c *CmdDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err er
 	}
 	runnable := remote.Query().Get("exec")
 	log.D("CmdDialer dial to cmd:%v", runnable)
-	var cmd *Cmd
+	var cmdReader io.Reader
+	var cmdWriter io.Writer
+	var cmdCloser func() error
+	var cmdStart func() error
 	switch runtime.GOOS {
 	case "windows":
-		cmd = NewCmd("Cmd", c.PS1, "cmd", "/C", runnable)
-	default:
-		cmd = NewCmd("Cmd", c.PS1, "bash", "/C", runnable)
-	}
-	if len(c.Prefix) > 0 {
-		cmd.Prefix = bytes.NewBuffer([]byte(c.Prefix))
-	}
-	cmd.Dir = c.Dir
-	cmd.Raw.Env = append(cmd.Raw.Env, c.Env...)
-	ps1 := remote.Query().Get("PS1")
-	if len(ps1) > 0 {
-		cmd.PS1 = ps1
-	}
-	dir := remote.Query().Get("Dir")
-	if len(dir) > 0 {
-		cmd.Dir = dir
-	}
-	for key, vals := range remote.Query() {
-		switch key {
-		case "PS1":
-		case "Dir":
-		case "LC":
-		case "exec":
-		default:
-			cmd.Raw.Env = append(cmd.Raw.Env, fmt.Sprintf("%v=%v", key, vals[0]))
+		cmd := exec.Command("cmd", "/C", runnable)
+		stdin, _ := cmd.StdinPipe()
+		stdout, piped, _ := os.Pipe()
+		cmd.Stdout = piped
+		cmd.Stderr = piped
+		cmdReader = stdout
+		cmdWriter = stdin
+		cmdCloser = func() error {
+			stdin.Close()
+			piped.Close()
+			cmd.Process.Kill()
+			err := cmd.Wait()
+			return err
 		}
+		cmdStart = cmd.Start
+	default:
+		cmd := NewCmd("Cmd", c.PS1, "bash", "-c", runnable)
+		if len(c.Prefix) > 0 {
+			cmd.Prefix = bytes.NewBuffer([]byte(c.Prefix))
+		}
+		cmd.Dir = c.Dir
+		cmd.Raw.Env = append(cmd.Raw.Env, c.Env...)
+		ps1 := remote.Query().Get("PS1")
+		if len(ps1) > 0 {
+			cmd.PS1 = ps1
+		}
+		dir := remote.Query().Get("Dir")
+		if len(dir) > 0 {
+			cmd.Dir = dir
+		}
+		for key, vals := range remote.Query() {
+			switch key {
+			case "PS1":
+			case "Dir":
+			case "LC":
+			case "exec":
+			default:
+				cmd.Raw.Env = append(cmd.Raw.Env, fmt.Sprintf("%v=%v", key, vals[0]))
+			}
+		}
+		cmd.Cols, cmd.Rows = 80, 60
+		util.ValidAttrF(`cols,O|I,R:0;rows,O|I,R:0;`, remote.Query().Get, true, &cmd.Cols, &cmd.Rows)
+		cmdReader = cmd
+		cmdWriter = cmd
+		cmdCloser = cmd.Close
+		cmdStart = cmd.Start
 	}
-	cmd.Cols, cmd.Rows = 80, 60
-	util.ValidAttrF(`cols,O|I,R:0;rows,O|I,R:0;`, remote.Query().Get, true, &cmd.Cols, &cmd.Rows)
 	//
 	lc := remote.Query().Get("LC")
 	if len(lc) < 1 {
@@ -199,24 +225,24 @@ func (c *CmdDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err er
 	switch lc {
 	case "zh_CN.GBK":
 		combined = &CombinedRWC{
-			Reader: transform.NewReader(cmd, simplifiedchinese.GBK.NewDecoder()),
-			Writer: NewCmdStdinWriter(transform.NewWriter(cmd, simplifiedchinese.GBK.NewEncoder()), c.Replace, c.CloseTag),
-			Closer: cmd.Close,
+			Reader: transform.NewReader(cmdReader, simplifiedchinese.GBK.NewDecoder()),
+			Writer: NewCmdStdinWriter(transform.NewWriter(cmdWriter, simplifiedchinese.GBK.NewEncoder()), c.Replace, c.CloseTag),
+			Closer: cmdCloser,
 		}
 	case "zh_CN.GB18030":
 		combined = &CombinedRWC{
-			Reader: transform.NewReader(cmd, simplifiedchinese.GB18030.NewDecoder()),
-			Writer: NewCmdStdinWriter(transform.NewWriter(cmd, simplifiedchinese.GB18030.NewEncoder()), c.Replace, c.CloseTag),
-			Closer: cmd.Close,
+			Reader: transform.NewReader(cmdReader, simplifiedchinese.GB18030.NewDecoder()),
+			Writer: NewCmdStdinWriter(transform.NewWriter(cmdWriter, simplifiedchinese.GB18030.NewEncoder()), c.Replace, c.CloseTag),
+			Closer: cmdCloser,
 		}
 	default:
 		combined = &CombinedRWC{
-			Reader: cmd,
-			Writer: NewCmdStdinWriter(cmd, c.Replace, c.CloseTag),
-			Closer: cmd.Close,
+			Reader: cmdReader,
+			Writer: NewCmdStdinWriter(cmdWriter, c.Replace, c.CloseTag),
+			Closer: cmdCloser,
 		}
 	}
-	err = cmd.Start()
+	err = cmdStart()
 	if err == nil {
 		reusable = NewReusableRWC(combined)
 		reusable.Name = reuse
