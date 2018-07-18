@@ -2,8 +2,10 @@ package dialer
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sync/atomic"
+	"time"
 )
 
 // type OutWriter struct {
@@ -162,3 +164,25 @@ func (d *DuplexPiped) Close() error {
 // 	n, err = w(p)
 // 	return
 // }
+
+func fullBuf(r io.Reader, p []byte, length uint32, last *int64) error {
+	all := uint32(0)
+	buf := p[:length]
+	for {
+		readed, err := r.Read(buf)
+		if err != nil {
+			return err
+		}
+		if last != nil {
+			*last = time.Now().Local().UnixNano() / 1e6
+		}
+		all += uint32(readed)
+		if all < length {
+			buf = p[all:]
+			continue
+		} else {
+			break
+		}
+	}
+	return nil
+}
