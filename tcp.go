@@ -41,6 +41,14 @@ func (t *TCPDialer) Matched(uri string) bool {
 func (t *TCPDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err error) {
 	remote, err := url.Parse(uri)
 	if err == nil {
+		var dialer net.Dialer
+		bind := remote.Query().Get("bind")
+		if len(bind) > 0 {
+			dialer.LocalAddr, err = net.ResolveTCPAddr("tcp", bind)
+			if err != nil {
+				return
+			}
+		}
 		network := remote.Scheme
 		host := remote.Host
 		switch network {
@@ -55,7 +63,7 @@ func (t *TCPDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err er
 				host += ":443"
 			}
 		}
-		raw, err = net.Dial(network, host)
+		raw, err = dialer.Dial(network, host)
 	}
 	return
 }
