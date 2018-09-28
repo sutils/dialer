@@ -147,7 +147,7 @@ func (c *CmdDialer) onCmdPaused(r *ReusableRWC) {
 }
 
 //Dial will start command and pipe to stdin/stdout
-func (c *CmdDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err error) {
+func (c *CmdDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 	remote, err := url.Parse(uri)
 	if err != nil {
 		return
@@ -358,5 +358,9 @@ func (r *ReusableRWC) Resume() (err error) {
 func (r *ReusableRWC) Destory() (err error) {
 	r.Reused = false
 	err = r.Raw.Close()
+	return
+}
+
+func (r *ReusableRWC) Pipe(raw io.ReadWriteCloser) (err error) {
 	return
 }

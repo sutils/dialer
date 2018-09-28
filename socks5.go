@@ -2,7 +2,6 @@ package dialer
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"net/url"
 	"regexp"
@@ -97,7 +96,7 @@ func (s *SocksProxyDialer) Matched(uri string) bool {
 }
 
 //Dial one connection by uri
-func (s *SocksProxyDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err error) {
+func (s *SocksProxyDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 	remote, err := url.Parse(uri)
 	if err != nil {
 		return
@@ -178,7 +177,7 @@ func (s *SocksProxyDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser,
 		return
 	}
 	if buf[1] == 0x00 {
-		raw = conn
+		raw = NewCopyPipable(conn)
 		return
 	}
 	err = fmt.Errorf("response code(%x)", buf[1])

@@ -2,7 +2,6 @@ package dialer
 
 import (
 	"fmt"
-	"io"
 	"regexp"
 	"sort"
 	"sync"
@@ -158,7 +157,7 @@ func (b *BalancedDialer) Matched(uri string) bool {
 	return b.matcher.MatchString(uri)
 }
 
-func (b *BalancedDialer) Dial(sid uint64, uri string) (r io.ReadWriteCloser, err error) {
+func (b *BalancedDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 	//
 	begin := util.Now()
 	var showed int64

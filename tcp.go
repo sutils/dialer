@@ -1,7 +1,6 @@
 package dialer
 
 import (
-	"io"
 	"net"
 	"net/url"
 	"regexp"
@@ -45,7 +44,7 @@ func (t *TCPDialer) Matched(uri string) bool {
 }
 
 //Dial one connection by uri
-func (t *TCPDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err error) {
+func (t *TCPDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 	remote, err := url.Parse(uri)
 	if err == nil {
 		var dialer net.Dialer
@@ -56,21 +55,23 @@ func (t *TCPDialer) Dial(sid uint64, uri string) (raw io.ReadWriteCloser, err er
 				return
 			}
 		}
-		network := remote.Scheme
+		network := "tcp"
 		host := remote.Host
 		switch network {
 		case "http":
-			network = "tcp"
 			if !t.portMatcher.MatchString(host) {
 				host += ":80"
 			}
 		case "https":
-			network = "tcp"
 			if !t.portMatcher.MatchString(host) {
 				host += ":443"
 			}
 		}
-		raw, err = dialer.Dial(network, host)
+		var basic net.Conn
+		basic, err = dialer.Dial(network, host)
+		if err == nil {
+			raw = NewCopyPipable(basic)
+		}
 	}
 	return
 }

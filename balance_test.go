@@ -39,7 +39,7 @@ func (o *OnceDialer) Matched(uri string) bool {
 }
 
 //dial raw connection
-func (o *OnceDialer) Dial(sid uint64, uri string) (r io.ReadWriteCloser, err error) {
+func (o *OnceDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 	r = o
 	o.dialed++
 	if o.dialed > 1 {
@@ -58,6 +58,10 @@ func (o *OnceDialer) Write(p []byte) (n int, err error) {
 
 func (o *OnceDialer) Close() error {
 	return nil
+}
+
+func (o *OnceDialer) Pipe(r io.ReadWriteCloser) (err error) {
+	return
 }
 
 func TestBalancedDialerDefaul(t *testing.T) {
@@ -211,7 +215,7 @@ func (o *TimeDialer) Matched(uri string) bool {
 }
 
 //dial raw connection
-func (t *TimeDialer) Dial(sid uint64, uri string) (r io.ReadWriteCloser, err error) {
+func (t *TimeDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 	if util.Now()-t.last < 100 {
 		panic("too fast")
 	}
@@ -230,6 +234,10 @@ func (o *TimeDialer) Write(p []byte) (n int, err error) {
 
 func (o *TimeDialer) Close() error {
 	return nil
+}
+
+func (o *TimeDialer) Pipe(r io.ReadWriteCloser) (err error) {
+	return
 }
 
 func TestBalancedDialerPolicy(t *testing.T) {

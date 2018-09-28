@@ -7,6 +7,35 @@ import (
 	"github.com/Centny/gwf/util"
 )
 
+type Pipable interface {
+	Pipe(r io.ReadWriteCloser) error
+}
+
+type Conn interface {
+	Pipable
+	io.ReadWriteCloser
+}
+
+type CopyPipable struct {
+	io.ReadWriteCloser
+}
+
+func NewCopyPipable(raw io.ReadWriteCloser) *CopyPipable {
+	return &CopyPipable{ReadWriteCloser: raw}
+}
+
+func (c *CopyPipable) Pipe(r io.ReadWriteCloser) (err error) {
+	go c.copyAndClose(c, r)
+	go c.copyAndClose(r, c)
+	return
+}
+
+func (c *CopyPipable) copyAndClose(src io.ReadWriteCloser, dst io.ReadWriteCloser) {
+	io.Copy(dst, src)
+	dst.Close()
+	src.Close()
+}
+
 // Dialer is the interface that wraps the dialer
 type Dialer interface {
 	Name() string
@@ -17,7 +46,7 @@ type Dialer interface {
 	//match uri
 	Matched(uri string) bool
 	//dial raw connection
-	Dial(sid uint64, uri string) (r io.ReadWriteCloser, err error)
+	Dial(sid uint64, uri string) (r Conn, err error)
 }
 
 //Pool is the set of Dialer
@@ -59,7 +88,7 @@ func (p *Pool) Bootstrap(options util.Map) error {
 }
 
 //Dial the uri by dialer poo
-func (p *Pool) Dial(sid uint64, uri string) (r io.ReadWriteCloser, err error) {
+func (p *Pool) Dial(sid uint64, uri string) (r Conn, err error) {
 	for _, dialer := range p.Dialers {
 		if dialer.Matched(uri) {
 			r, err = dialer.Dial(sid, uri)

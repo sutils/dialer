@@ -43,7 +43,7 @@ func (e *EchoDialer) Matched(uri string) bool {
 }
 
 //Dial one echo connection.
-func (e *EchoDialer) Dial(sid uint64, uri string) (r io.ReadWriteCloser, err error) {
+func (e *EchoDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 	r = NewEchoReadWriteCloser()
 	return
 }
@@ -96,4 +96,16 @@ func (e *EchoReadWriteCloser) Close() (err error) {
 	}
 	e.lck.Unlock()
 	return
+}
+
+func (e *EchoReadWriteCloser) Pipe(raw io.ReadWriteCloser) (err error) {
+	go e.copyAndClose(e, raw)
+	go e.copyAndClose(raw, e)
+	return
+}
+
+func (e *EchoReadWriteCloser) copyAndClose(src io.ReadWriteCloser, dst io.ReadWriteCloser) {
+	io.Copy(dst, src)
+	dst.Close()
+	src.Close()
 }
