@@ -67,6 +67,7 @@ type CmdDialer struct {
 	running     map[string]*ReusableRWC
 	runningLck  sync.RWMutex
 	loopRunning bool
+	conf        util.Map
 }
 
 //NewCmdDialer will return new CmdDialer
@@ -78,6 +79,7 @@ func NewCmdDialer() *CmdDialer {
 		Reuse:       3600000,
 		ReuseDelay:  30 * time.Second,
 		loopRunning: true,
+		conf:        util.Map{},
 	}
 	if runtime.GOOS == "windows" {
 		// cmd.Replace = []byte("\r")
@@ -87,7 +89,7 @@ func NewCmdDialer() *CmdDialer {
 
 //Name will return dialer name
 func (c *CmdDialer) Name() string {
-	return "Cmd"
+	return "cmd"
 }
 
 func (c *CmdDialer) loopReuse() {
@@ -124,6 +126,10 @@ func (c *CmdDialer) Bootstrap(options util.Map) error {
 		go c.loopReuse()
 	}
 	return nil
+}
+
+func (c *CmdDialer) Options() util.Map {
+	return c.conf
 }
 
 //Matched will return wheter uri is invalid uril.

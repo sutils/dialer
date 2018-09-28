@@ -50,28 +50,44 @@ func (s StringAddressPooler) Done(address, uri string, err error) {
 
 //SocksProxyDialer is an implementation of the Dialer interface for dial by socks proxy.
 type SocksProxyDialer struct {
+	ID      string
 	Pooler  SocksProxyAddressPooler
 	matcher *regexp.Regexp
+	conf    util.Map
 }
 
 //NewSocksProxyDialer will return new SocksProxyDialer
 func NewSocksProxyDialer() *SocksProxyDialer {
 	return &SocksProxyDialer{
 		matcher: regexp.MustCompile("^.*:[0-9]+$"),
+		conf:    util.Map{},
 	}
 }
 
 //Name will return dialer name
 func (s *SocksProxyDialer) Name() string {
-	return "Socks"
+	return s.ID
 }
 
 //Bootstrap the dialer.
-func (s *SocksProxyDialer) Bootstrap(options util.Map) error {
+func (s *SocksProxyDialer) Bootstrap(options util.Map) (err error) {
+	s.ID = options.StrVal("id")
+	if len(s.ID) < 1 {
+		return fmt.Errorf("the dialer id is required")
+	}
 	if options != nil {
 		s.Pooler = StringAddressPooler(options.StrVal("address"))
 	}
+	s.conf = options
+	matcher := options.StrVal("matcher")
+	if len(matcher) > 0 {
+		s.matcher, err = regexp.Compile(matcher)
+	}
 	return nil
+}
+
+func (s *SocksProxyDialer) Options() util.Map {
+	return s.conf
 }
 
 //Matched will return whether the uri is invalid tcp uri.

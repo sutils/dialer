@@ -33,4 +33,6 @@ func TestEcho(t *testing.T) {
 	}()
 	fmt.Fprintf(conn, "data-%v\n", 0)
 	conn.Close()
+	dialer.Name()
+	dialer.Options()
 }

@@ -12,23 +12,30 @@ import (
 //TCPDialer is an implementation of the Dialer interface for dial tcp connections.
 type TCPDialer struct {
 	portMatcher *regexp.Regexp
+	conf        util.Map
 }
 
 //NewTCPDialer will return new TCPDialer
 func NewTCPDialer() *TCPDialer {
 	return &TCPDialer{
 		portMatcher: regexp.MustCompile("^.*:[0-9]+$"),
+		conf:        util.Map{},
 	}
 }
 
 //Name will return dialer name
 func (t *TCPDialer) Name() string {
-	return "TCP"
+	return "tcp"
 }
 
 //Bootstrap the dialer.
 func (t *TCPDialer) Bootstrap(options util.Map) error {
+	t.conf = options
 	return nil
+}
+
+func (t *TCPDialer) Options() util.Map {
+	return t.conf
 }
 
 //Matched will return whether the uri is invalid tcp uri.

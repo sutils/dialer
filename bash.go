@@ -42,9 +42,9 @@ func (c *Cmd) AddEnvf(format string, args ...interface{}) {
 	c.Raw.Env = append(c.Raw.Env, fmt.Sprintf(format, args...))
 }
 
-func (c *Cmd) String() string {
-	return c.Name
-}
+// func (c *Cmd) String() string {
+// 	return c.Name
+// }
 
 func (c *Cmd) prepare() (err error) {
 	if len(c.PS1) > 0 {

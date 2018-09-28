@@ -133,6 +133,8 @@ func TestCmdDialer(t *testing.T) {
 	//
 	cmd.Shutdown()
 	time.Sleep(500 * time.Millisecond)
+	cmd.Name()
+	cmd.Options()
 }
 
 func TestCmdDialer2(t *testing.T) {

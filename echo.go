@@ -10,11 +10,14 @@ import (
 
 //EchoDialer is an implementation of the Dialer interface for echo tcp connection.
 type EchoDialer struct {
+	conf util.Map
 }
 
 //NewEchoDialer will return new EchoDialer
 func NewEchoDialer() (dialer *EchoDialer) {
-	dialer = &EchoDialer{}
+	dialer = &EchoDialer{
+		conf: util.Map{},
+	}
 	return
 }
 
@@ -25,7 +28,12 @@ func (e *EchoDialer) Name() string {
 
 //Bootstrap the dialer
 func (e *EchoDialer) Bootstrap(options util.Map) error {
+	e.conf = options
 	return nil
+}
+
+func (e *EchoDialer) Options() util.Map {
+	return e.conf
 }
 
 //Matched will return whetheer uri is invalid

@@ -9,6 +9,7 @@ import (
 func TestSocksProxy(t *testing.T) {
 	dailer := NewSocksProxyDialer()
 	dailer.Bootstrap(util.Map{
+		"id":      "testing",
 		"address": "127.0.0.1:1080",
 	})
 	remote := "tcp://www.google.com:80"
@@ -22,4 +23,14 @@ func TestSocksProxy(t *testing.T) {
 		return
 	}
 	raw.Close()
+	dailer.Name()
+	dailer.Options()
+	//
+	//test error
+	dailer = NewSocksProxyDialer()
+	err = dailer.Bootstrap(util.Map{})
+	if err == nil {
+		t.Error(err)
+		return
+	}
 }

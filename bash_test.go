@@ -1,5 +1,12 @@
 package dialer
 
+import (
+	"os"
+	"testing"
+
+	"github.com/kr/pty"
+)
+
 // func TestBash(t *testing.T) {
 // 	cmd := NewCmd("n1", "", "bash")
 // 	cback := make(chan []byte)
@@ -20,3 +27,35 @@ package dialer
 // 		return
 // 	}
 // }
+
+func TestGetSize(t *testing.T) {
+	pty, vty, err := pty.Open()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	defer func() {
+		pty.Close()
+		vty.Close()
+	}()
+	_, _, err = GetFileWinSize(pty)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	err = SetFileWinSize(pty, 1024, 768)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	_, _, err = GetFileWinSize(os.Stdout)
+	if err == nil {
+		t.Error(err)
+		return
+	}
+	err = SetFileWinSize(os.Stdout, 1024, 768)
+	if err == nil {
+		t.Error(err)
+		return
+	}
+}

@@ -98,4 +98,19 @@ func TestWebDialer(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	dialer.Name()
+	dialer.Options()
+}
+
+func TestPipedConne(t *testing.T) {
+	a, b, err := CreatePipedConn()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	a.RemoteAddr()
+	a.LocalAddr()
+	a.Network()
+	fmt.Printf("-->%v\n", a)
+	b.Close()
 }

@@ -26,5 +26,19 @@ func TestTCPDialer(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	_, err = tcp.Dial(10, "http://localhost?bind=0.0.0.0:0")
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	fmt.Printf("%v test done...", tcp)
+	tcp.Name()
+	tcp.Options()
+	//
+	//test error
+	_, err = tcp.Dial(10, "http://localhost?bind=0.0.0.0")
+	if err == nil {
+		t.Error(err)
+		return
+	}
 }

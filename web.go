@@ -22,6 +22,7 @@ type WebDialer struct {
 	cons    map[string]*WebDialerConn
 	davsLck sync.RWMutex
 	davs    map[string]*WebdavHandler
+	conf    util.Map
 }
 
 //NewWebDialer will return new WebDialer
@@ -32,13 +33,14 @@ func NewWebDialer() (dialer *WebDialer) {
 		cons:    map[string]*WebDialerConn{},
 		davsLck: sync.RWMutex{},
 		davs:    map[string]*WebdavHandler{},
+		conf:    util.Map{},
 	}
 	return
 }
 
 //Name will return dialer name
 func (web *WebDialer) Name() string {
-	return "TCP"
+	return "web"
 }
 
 //Bootstrap the web dialer
@@ -48,6 +50,10 @@ func (web *WebDialer) Bootstrap(options util.Map) error {
 		close(web.accept)
 	}()
 	return nil
+}
+
+func (web *WebDialer) Options() util.Map {
+	return web.conf
 }
 
 //Shutdown the web dialer
