@@ -55,7 +55,7 @@ func (t *TCPDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 				return
 			}
 		}
-		network := "tcp"
+		network := remote.Scheme
 		host := remote.Host
 		switch network {
 		case "http":
@@ -68,7 +68,7 @@ func (t *TCPDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 			}
 		}
 		var basic net.Conn
-		basic, err = dialer.Dial(network, host)
+		basic, err = dialer.Dial("tcp", host)
 		if err == nil {
 			raw = NewCopyPipable(basic)
 		}

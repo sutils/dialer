@@ -3,7 +3,9 @@ package dialer
 import (
 	"fmt"
 	"io"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Centny/gwf/util"
 )
@@ -64,6 +66,10 @@ func (o *OnceDialer) Pipe(r io.ReadWriteCloser) (err error) {
 	return
 }
 
+func (o *OnceDialer) String() string {
+	return fmt.Sprintf("OnceDialer-%v", o.ID)
+}
+
 func TestBalancedDialerDefaul(t *testing.T) {
 	NewDialer = func(t string) Dialer {
 		return &OnceDialer{}
@@ -113,6 +119,7 @@ func TestBalancedDialerDefaul(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	fmt.Println("--->", err)
 	NewDialer = DefaultDialerCreator
 	//
 	//
@@ -169,6 +176,12 @@ func TestBalancedDialerDefaul(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	//uri error
+	_, err = dialer.Dial(10, "%S")
+	if err == nil {
+		t.Error(err)
+		return
+	}
 
 	//
 	err = dialer.AddPolicy(".*", []int64{})
@@ -190,28 +203,28 @@ type TimeDialer struct {
 	last   int64
 }
 
-func (o *TimeDialer) Name() string {
-	return o.ID
+func (t *TimeDialer) Name() string {
+	return t.ID
 }
 
 //initial dialer
-func (o *TimeDialer) Bootstrap(options util.Map) error {
-	o.ID = options.StrVal("id")
-	if len(o.ID) < 1 {
+func (t *TimeDialer) Bootstrap(options util.Map) error {
+	t.ID = options.StrVal("id")
+	if len(t.ID) < 1 {
 		return fmt.Errorf("id is required")
 	}
-	o.conf = options
+	t.conf = options
 	return nil
 }
 
 //
-func (o *TimeDialer) Options() util.Map {
-	return o.conf
+func (t *TimeDialer) Options() util.Map {
+	return t.conf
 }
 
 //match uri
-func (o *TimeDialer) Matched(uri string) bool {
-	return uri == "time"
+func (t *TimeDialer) Matched(uri string) bool {
+	return true
 }
 
 //dial raw connection
@@ -221,23 +234,28 @@ func (t *TimeDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 	}
 	r = t
 	t.last = util.Now()
+	time.Sleep(10 * time.Millisecond)
 	return
 }
 
-func (o *TimeDialer) Read(p []byte) (n int, err error) {
+func (t *TimeDialer) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (o *TimeDialer) Write(p []byte) (n int, err error) {
+func (t *TimeDialer) Write(p []byte) (n int, err error) {
 	return
 }
 
-func (o *TimeDialer) Close() error {
+func (t *TimeDialer) Close() error {
 	return nil
 }
 
-func (o *TimeDialer) Pipe(r io.ReadWriteCloser) (err error) {
+func (t *TimeDialer) Pipe(r io.ReadWriteCloser) (err error) {
 	return
+}
+
+func (t *TimeDialer) String() string {
+	return fmt.Sprintf("OnceDialer-%v", t.ID)
 }
 
 func TestBalancedDialerPolicy(t *testing.T) {
@@ -251,8 +269,8 @@ func TestBalancedDialerPolicy(t *testing.T) {
 	err := dialer.Bootstrap(util.Map{
 		"id":      "t1",
 		"matcher": ".*",
-		"timeout": 1000,
-		"delay":   100,
+		"timeout": 10000,
+		"delay":   1,
 		"dialers": []util.Map{
 			{
 				"id":          "i0",
@@ -281,11 +299,8 @@ func TestBalancedDialerPolicy(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	_, err = dialer.Dial(uint64(4), "not")
-	if err == nil {
-		t.Error(err)
-		return
-	}
+	//
+	//test loop muti dial
 	for i := 0; i < 10; i++ {
 		_, err = dialer.Dial(uint64(i), "time")
 		if err != nil {
@@ -293,4 +308,85 @@ func TestBalancedDialerPolicy(t *testing.T) {
 			return
 		}
 	}
+	//
+	//test concurrency multi dial
+	wg := sync.WaitGroup{}
+	total := 100
+	wg.Add(total)
+	for i := 0; i < total; i++ {
+		go func(v int) {
+			defer wg.Done()
+			_, err = dialer.Dial(uint64(v), fmt.Sprintf("time-%v", v/10))
+			if err != nil {
+				t.Errorf("%v->%v", v, err)
+				return
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+func TestBalancedDialerLimit(t *testing.T) {
+	NewDialer = func(t string) Dialer {
+		return &TimeDialer{}
+	}
+	defer func() {
+		NewDialer = DefaultDialerCreator
+	}()
+	dialer := NewBalancedDialer()
+	err := dialer.Bootstrap(util.Map{
+		"id":      "t1",
+		"matcher": ".*",
+		"timeout": 10000,
+		"delay":   1,
+		"dialers": []util.Map{
+			{
+				"id":          "i0",
+				"type":        "time",
+				"fail_remove": 2,
+				"limit":       []int{110, 1},
+			},
+			{
+				"id":          "i1",
+				"type":        "time",
+				"fail_remove": 3,
+				"limit":       []int{110, 1},
+			},
+			{
+				"id":          "i2",
+				"type":        "time",
+				"fail_remove": 4,
+				"limit":       []int{110, 1},
+			},
+		},
+	})
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	//
+	//test loop muti dial
+	for i := 0; i < 10; i++ {
+		_, err = dialer.Dial(uint64(i), "time")
+		if err != nil {
+			t.Errorf("%v->%v", i, err)
+			return
+		}
+	}
+	//
+	//test concurrency multi dial
+	wg := sync.WaitGroup{}
+	total := 100
+	wg.Add(total)
+	for i := 0; i < total; i++ {
+		go func(v int) {
+			defer wg.Done()
+			_, err = dialer.Dial(uint64(v), fmt.Sprintf("time-%v", v/10))
+			if err != nil {
+				t.Errorf("%v->%v", v, err)
+				return
+			}
+		}(i)
+	}
+	wg.Wait()
 }

@@ -188,5 +188,5 @@ func (s *SocksProxyDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 }
 
 func (s *SocksProxyDialer) String() string {
-	return "SocksProxyDialer"
+	return fmt.Sprintf("SocksProxyDialer-%v", s.ID)
 }

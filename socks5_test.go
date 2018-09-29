@@ -1,6 +1,7 @@
 package dialer
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/Centny/gwf/util"
@@ -33,4 +34,5 @@ func TestSocksProxy(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	fmt.Printf("-->%v\n", dailer)
 }

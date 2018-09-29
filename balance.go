@@ -2,9 +2,9 @@ package dialer
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/Centny/gwf/log"
@@ -42,31 +42,36 @@ func (m *MapIntSorter) Swap(i, j int) {
 
 type Policy struct {
 	Matcher *regexp.Regexp
+	Scope   string
 	Limit   []int64
 }
 
 type BalancedDialer struct {
-	ID          string
-	dialers     map[string]Dialer
-	dialersUsed map[string][]int64 //map key to [begin,used,fail]
-	dialersLock sync.RWMutex
-	PolicyList  []*Policy
-	Delay       int64
-	Timeout     int64
-	Conf        util.Map
-	matcher     *regexp.Regexp
+	ID              string
+	dialers         map[string]Dialer
+	dialersUsed     map[string][]int64            //map key to [begin,used,fail]
+	dialersHostUsed map[string]map[string][]int64 //map key/host to [begin,used,fail]
+	dialersLock     chan int
+	PolicyList      []*Policy
+	Delay           int64
+	Timeout         int64
+	Conf            util.Map
+	matcher         *regexp.Regexp
 }
 
 func NewBalancedDialer() *BalancedDialer {
-	return &BalancedDialer{
-		dialers:     map[string]Dialer{},
-		dialersUsed: map[string][]int64{},
-		dialersLock: sync.RWMutex{},
-		Delay:       500,
-		Timeout:     60000,
-		Conf:        util.Map{},
-		matcher:     regexp.MustCompile(".*"),
+	dialer := &BalancedDialer{
+		dialers:         map[string]Dialer{},
+		dialersUsed:     map[string][]int64{},
+		dialersHostUsed: map[string]map[string][]int64{},
+		dialersLock:     make(chan int, 1),
+		Delay:           500,
+		Timeout:         60000,
+		Conf:            util.Map{},
+		matcher:         regexp.MustCompile(".*"),
 	}
+	dialer.dialersLock <- 1
+	return dialer
 }
 
 func (b *BalancedDialer) sortedDialer(index int) []string {
@@ -91,13 +96,14 @@ func (b *BalancedDialer) AddPolicy(matcher string, limit []int64) (err error) {
 }
 
 func (b *BalancedDialer) AddDialer(dialers ...Dialer) {
-	b.dialersLock.Lock()
+	<-b.dialersLock
 	for _, dialer := range dialers {
 		name := dialer.Name()
 		b.dialers[name] = dialer
 		b.dialersUsed[name] = []int64{0, 0, 0}
+		b.dialersHostUsed[name] = map[string][]int64{}
 	}
-	b.dialersLock.Unlock()
+	b.dialersLock <- 1
 	return
 }
 
@@ -126,8 +132,10 @@ func (b *BalancedDialer) Bootstrap(options util.Map) (err error) {
 			return
 		}
 	}
-	b.dialersLock.Lock()
-	defer b.dialersLock.Unlock()
+	<-b.dialersLock
+	defer func() {
+		b.dialersLock <- 1
+	}()
 	dialerOptions := options.AryMapVal("dialers")
 	for _, option := range dialerOptions {
 		dtype := option.StrVal("type")
@@ -142,6 +150,7 @@ func (b *BalancedDialer) Bootstrap(options util.Map) (err error) {
 		name := dialer.Name()
 		b.dialers[name] = dialer
 		b.dialersUsed[name] = []int64{0, 0, 0}
+		b.dialersHostUsed[name] = map[string][]int64{}
 		log.D("BalancedDialer add dialer(%v) to pool success", dialer)
 	}
 	return nil
@@ -158,6 +167,10 @@ func (b *BalancedDialer) Matched(uri string) bool {
 }
 
 func (b *BalancedDialer) Dial(sid uint64, uri string) (r Conn, err error) {
+	target, err := url.Parse(uri)
+	if err != nil {
+		return
+	}
 	//
 	begin := util.Now()
 	var showed int64
@@ -167,55 +180,97 @@ func (b *BalancedDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 			err = fmt.Errorf("dial to %v timeout", uri)
 			break
 		}
+		<-b.dialersLock
+		//do dialer limit
+		sortedNames := b.sortedDialer(1)
+		var limitedNames []string
+		now = util.Now()
+		for _, name := range sortedNames {
+			dialer := b.dialers[name]
+			used := b.dialersUsed[name]
+			limit := dialer.Options().AryInt64Val("limit")
+			if len(limit) < 2 {
+				limitedNames = append(limitedNames, name)
+				used[1] = 0
+				continue
+			}
+			if now-used[0] > limit[0] {
+				limitedNames = append(limitedNames, name)
+				used[1] = 0
+			}
+			if used[1] < limit[1] {
+				limitedNames = append(limitedNames, name)
+			}
+		}
+		//do host policy
 		var policy *Policy
-		var names []string
-		b.dialersLock.Lock()
 		for _, p := range b.PolicyList {
 			if p.Matcher.MatchString(uri) {
 				policy = p
+				break
 			}
 		}
+		var policyNames []string
 		if policy == nil {
-			names = b.sortedDialer(1)
+			policyNames = limitedNames
 		} else {
-			for name, used := range b.dialersUsed {
+			for _, name := range limitedNames {
+				allHostUsed := b.dialersHostUsed[name]
+				used := allHostUsed[target.Host]
+				if used == nil {
+					used = []int64{0, 0, 0}
+					allHostUsed[target.Host] = used
+				}
 				if now-used[0] > policy.Limit[0] {
-					names = append(names, name)
+					policyNames = append(policyNames, name)
 					used[1] = 0
 				}
 				if used[1] < policy.Limit[1] {
-					names = append(names, name)
+					policyNames = append(policyNames, name)
 				}
 			}
 		}
-		for _, name := range names {
+		for _, name := range policyNames {
 			dialer := b.dialers[name]
 			if !dialer.Matched(uri) {
 				continue
 			}
 			used := b.dialersUsed[name]
+			hostUsed := b.dialersHostUsed[name][target.Host]
+			if hostUsed == nil {
+				hostUsed = []int64{0, 0, 0}
+				b.dialersHostUsed[name][target.Host] = hostUsed
+			}
 			if used[1] == 0 {
 				used[0] = util.Now()
 			}
+			if hostUsed[1] == 0 {
+				hostUsed[0] = util.Now()
+			}
 			used[1]++
-			b.dialersLock.Unlock()
+			hostUsed[1]++
+			b.dialersLock <- 1
 			r, err = dialer.Dial(sid, uri)
-			b.dialersLock.Lock()
+			<-b.dialersLock
 			if err == nil {
 				used[2] = 0
-				b.dialersLock.Unlock()
+				hostUsed[2] = 0
+				b.dialersLock <- 1
+				log.D("BalancedDialer dail to %v with dialer(%v) success", uri, dialer)
 				return
 			}
 			used[2]++
+			hostUsed[2]++
 			log.D("BalancedDialer using %v and dial to %v fail with %v", dialer, uri, err)
 			failRemove := dialer.Options().IntValV("fail_remove", 0)
 			if failRemove > 0 && used[2] >= failRemove {
 				log.D("BalancedDialer remove dialer(%v) by %v fail count", dialer, used[2])
 				delete(b.dialers, name)
 				delete(b.dialersUsed, name)
+				delete(b.dialersHostUsed, name)
 			}
 		}
-		b.dialersLock.Unlock()
+		b.dialersLock <- 1
 		now = util.Now()
 		if now-showed > 3000 {
 			log.D("BalancedDialer dial to %v is waiting", uri)
