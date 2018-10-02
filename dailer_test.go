@@ -38,7 +38,7 @@ func TestPool(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	_, err = pool.Dial(10, "http://web?dir=/tmp")
+	_, err = pool.Dial(10, "http://web?dir=/tmp", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -46,7 +46,7 @@ func TestPool(t *testing.T) {
 
 	//test not dialer
 	pool = NewPool()
-	_, err = pool.Dial(10, "http://web?dir=/tmp")
+	_, err = pool.Dial(10, "http://web?dir=/tmp", nil)
 	if err == nil {
 		t.Error(err)
 		return

@@ -26,7 +26,7 @@ func TestCmdDialer(t *testing.T) {
 		return
 	}
 	fmt.Println("---->0")
-	raw, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx")
+	raw, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -45,20 +45,20 @@ func TestCmdDialer(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	fmt.Println("---->2")
 	{ //test reuse
-		raw2, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx")
+		raw2, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx", nil)
 		if err != nil || raw == raw2 {
 			fmt.Printf("-->%p--%p\n", raw, raw2)
 			t.Error(err)
 			return
 		}
-		raw3, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx")
+		raw3, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx", nil)
 		if err != nil || raw == raw3 || raw2 == raw3 {
 			fmt.Printf("-->%p--%p\n", raw, raw2)
 			t.Error(err)
 			return
 		}
 		raw2.Close()
-		raw4, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx")
+		raw4, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx", nil)
 		if err != nil || raw4 != raw2 {
 			fmt.Printf("-->%p--%p\n", raw, raw2)
 			t.Error(err)
@@ -66,7 +66,7 @@ func TestCmdDialer(t *testing.T) {
 		}
 		raw4.Close()
 		raw3.Close()
-		raw5, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx")
+		raw5, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash&PS1=testing&Dir=/tmp&e1=1&reuse=xx", nil)
 		if err != nil || raw5 != raw3 {
 			fmt.Printf("-->%p--%p\n", raw, raw2)
 			t.Error(err)
@@ -91,7 +91,7 @@ func TestCmdDialer(t *testing.T) {
 	}
 	{ //test ctrl-c
 		fmt.Printf("\n\n\ntest ctrl-c\n\n")
-		raw2, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash")
+		raw2, err := cmd.Dial(10, "tcp://cmd?exec=/bin/bash", nil)
 		if err != nil {
 			t.Error(err)
 			return
@@ -110,7 +110,7 @@ func TestCmdDialer(t *testing.T) {
 	//
 	//test encoding
 	fmt.Printf("\n\n\ntest encoding\n\n")
-	raw, err = cmd.Dial(10, "tcp://cmd?exec=/bin/bash&LC=zh_CN.GBK")
+	raw, err = cmd.Dial(10, "tcp://cmd?exec=/bin/bash&LC=zh_CN.GBK", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -120,7 +120,7 @@ func TestCmdDialer(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	raw.Close()
 	//
-	raw, err = cmd.Dial(10, "tcp://cmd?exec=/bin/bash&LC=zh_CN.GB18030")
+	raw, err = cmd.Dial(10, "tcp://cmd?exec=/bin/bash&LC=zh_CN.GB18030", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -146,7 +146,7 @@ func TestCmdDialer2(t *testing.T) {
 		t.Error("error")
 		return
 	}
-	raw, err := cmd.Dial(10, "tcp://cmd?exec=bash")
+	raw, err := cmd.Dial(10, "tcp://cmd?exec=bash", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -164,7 +164,7 @@ func TestCmdDialer2(t *testing.T) {
 	fmt.Printf("%v\n", cmd)
 	//
 	//test encoding
-	raw, err = cmd.Dial(10, "tcp://cmd?exec=bash&LC=zh_CN.GBK")
+	raw, err = cmd.Dial(10, "tcp://cmd?exec=bash&LC=zh_CN.GBK", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -174,7 +174,7 @@ func TestCmdDialer2(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	raw.Close()
 	//
-	raw, err = cmd.Dial(10, "tcp://cmd?exec=bash&LC=zh_CN.GB18030")
+	raw, err = cmd.Dial(10, "tcp://cmd?exec=bash&LC=zh_CN.GB18030", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -185,7 +185,7 @@ func TestCmdDialer2(t *testing.T) {
 	raw.Close()
 	//
 	//test error
-	_, err = cmd.Dial(100, "://cmd")
+	_, err = cmd.Dial(100, "://cmd", nil)
 	if err == nil {
 		t.Error("error")
 		return

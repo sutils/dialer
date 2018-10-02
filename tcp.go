@@ -1,6 +1,7 @@
 package dialer
 
 import (
+	"io"
 	"net"
 	"net/url"
 	"regexp"
@@ -44,7 +45,7 @@ func (t *TCPDialer) Matched(uri string) bool {
 }
 
 //Dial one connection by uri
-func (t *TCPDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
+func (t *TCPDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (raw Conn, err error) {
 	remote, err := url.Parse(uri)
 	if err == nil {
 		var dialer net.Dialer
@@ -74,6 +75,12 @@ func (t *TCPDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 		basic, err = dialer.Dial("tcp", host)
 		if err == nil {
 			raw = NewCopyPipable(basic)
+			if pipe != nil {
+				err = raw.Pipe(pipe)
+			}
+			if err != nil {
+				basic.Close()
+			}
 		}
 	}
 	return

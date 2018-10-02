@@ -3,6 +3,7 @@ package dialer
 import (
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/Centny/gwf/util"
 )
@@ -18,6 +19,7 @@ type Conn interface {
 
 type CopyPipable struct {
 	io.ReadWriteCloser
+	piped uint32
 }
 
 func NewCopyPipable(raw io.ReadWriteCloser) *CopyPipable {
@@ -25,8 +27,12 @@ func NewCopyPipable(raw io.ReadWriteCloser) *CopyPipable {
 }
 
 func (c *CopyPipable) Pipe(r io.ReadWriteCloser) (err error) {
-	go c.copyAndClose(c, r)
-	go c.copyAndClose(r, c)
+	if atomic.CompareAndSwapUint32(&c.piped, 0, 1) {
+		go c.copyAndClose(c, r)
+		go c.copyAndClose(r, c)
+	} else {
+		err = fmt.Errorf("piped")
+	}
 	return
 }
 
@@ -46,7 +52,7 @@ type Dialer interface {
 	//match uri
 	Matched(uri string) bool
 	//dial raw connection
-	Dial(sid uint64, uri string) (r Conn, err error)
+	Dial(sid uint64, uri string, raw io.ReadWriteCloser) (r Conn, err error)
 }
 
 //Pool is the set of Dialer
@@ -101,10 +107,10 @@ func (p *Pool) Bootstrap(options util.Map) error {
 }
 
 //Dial the uri by dialer poo
-func (p *Pool) Dial(sid uint64, uri string) (r Conn, err error) {
+func (p *Pool) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (r Conn, err error) {
 	for _, dialer := range p.Dialers {
 		if dialer.Matched(uri) {
-			r, err = dialer.Dial(sid, uri)
+			r, err = dialer.Dial(sid, uri, pipe)
 			return
 		}
 	}

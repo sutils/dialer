@@ -41,7 +41,7 @@ func (o *OnceDialer) Matched(uri string) bool {
 }
 
 //dial raw connection
-func (o *OnceDialer) Dial(sid uint64, uri string) (r Conn, err error) {
+func (o *OnceDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (r Conn, err error) {
 	r = o
 	o.dialed++
 	if o.dialed > 1 {
@@ -102,19 +102,19 @@ func TestBalancedDialerDefaul(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	_, err = dialer.Dial(uint64(4), "not")
+	_, err = dialer.Dial(uint64(4), "not", nil)
 	if err == nil {
 		t.Error(err)
 		return
 	}
 	for i := 0; i < 3; i++ {
-		_, err = dialer.Dial(uint64(i), "once")
+		_, err = dialer.Dial(uint64(i), "once", nil)
 		if err != nil {
 			t.Error(err)
 			return
 		}
 	}
-	_, err = dialer.Dial(uint64(4), "once")
+	_, err = dialer.Dial(uint64(4), "once", nil)
 	if err == nil {
 		t.Error(err)
 		return
@@ -177,7 +177,7 @@ func TestBalancedDialerDefaul(t *testing.T) {
 		return
 	}
 	//uri error
-	_, err = dialer.Dial(10, "%S")
+	_, err = dialer.Dial(10, "%S", nil)
 	if err == nil {
 		t.Error(err)
 		return
@@ -228,7 +228,7 @@ func (t *TimeDialer) Matched(uri string) bool {
 }
 
 //dial raw connection
-func (t *TimeDialer) Dial(sid uint64, uri string) (r Conn, err error) {
+func (t *TimeDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (r Conn, err error) {
 	if util.Now()-t.last < 100 {
 		panic("too fast")
 	}
@@ -302,7 +302,7 @@ func TestBalancedDialerPolicy(t *testing.T) {
 	//
 	//test loop muti dial
 	for i := 0; i < 10; i++ {
-		_, err = dialer.Dial(uint64(i), "time")
+		_, err = dialer.Dial(uint64(i), "time", nil)
 		if err != nil {
 			t.Errorf("%v->%v", i, err)
 			return
@@ -316,7 +316,7 @@ func TestBalancedDialerPolicy(t *testing.T) {
 	for i := 0; i < total; i++ {
 		go func(v int) {
 			defer wg.Done()
-			_, err = dialer.Dial(uint64(v), fmt.Sprintf("time-%v", v/10))
+			_, err = dialer.Dial(uint64(v), fmt.Sprintf("time-%v", v/10), nil)
 			if err != nil {
 				t.Errorf("%v->%v", v, err)
 				return
@@ -367,7 +367,7 @@ func TestBalancedDialerLimit(t *testing.T) {
 	//
 	//test loop muti dial
 	for i := 0; i < 10; i++ {
-		_, err = dialer.Dial(uint64(i), "time")
+		_, err = dialer.Dial(uint64(i), "time", nil)
 		if err != nil {
 			t.Errorf("%v->%v", i, err)
 			return
@@ -381,7 +381,7 @@ func TestBalancedDialerLimit(t *testing.T) {
 	for i := 0; i < total; i++ {
 		go func(v int) {
 			defer wg.Done()
-			_, err = dialer.Dial(uint64(v), fmt.Sprintf("time-%v", v/10))
+			_, err = dialer.Dial(uint64(v), fmt.Sprintf("time-%v", v/10), nil)
 			if err != nil {
 				t.Errorf("%v->%v", v, err)
 				return

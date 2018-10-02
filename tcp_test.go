@@ -16,17 +16,17 @@ func TestTCPDialer(t *testing.T) {
 		t.Error("error")
 		return
 	}
-	_, err := tcp.Dial(10, "http://localhost")
+	_, err := tcp.Dial(10, "http://localhost", nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	_, err = tcp.Dial(10, "https://www.baidu.com")
+	_, err = tcp.Dial(10, "https://www.baidu.com", nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	_, err = tcp.Dial(10, "http://localhost?bind=0.0.0.0:0")
+	_, err = tcp.Dial(10, "http://localhost?bind=0.0.0.0:0", nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -36,7 +36,7 @@ func TestTCPDialer(t *testing.T) {
 	tcp.Options()
 	//
 	//test error
-	_, err = tcp.Dial(10, "http://localhost?bind=0.0.0.0")
+	_, err = tcp.Dial(10, "http://localhost?bind=0.0.0.0", nil)
 	if err == nil {
 		t.Error(err)
 		return

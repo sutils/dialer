@@ -37,7 +37,7 @@ func TestWebDialer(t *testing.T) {
 			if err != nil {
 				break
 			}
-			raw, err := dialer.Dial(cid, "http://web?dir=/tmp")
+			raw, err := dialer.Dial(cid, "http://web?dir=/tmp", nil)
 			if err != nil {
 				panic(err)
 			}
@@ -93,7 +93,7 @@ func TestWebDialer(t *testing.T) {
 		return
 	}
 	//
-	_, err = dialer.Dial(100, "://")
+	_, err = dialer.Dial(100, "://", nil)
 	if err == nil {
 		t.Error(err)
 		return

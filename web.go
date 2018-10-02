@@ -69,7 +69,7 @@ func (web *WebDialer) Matched(uri string) bool {
 }
 
 //Dial to web server
-func (web *WebDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
+func (web *WebDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (raw Conn, err error) {
 	conn, basic, err := PipeWebDialerConn(sid, uri)
 	if err != nil {
 		return
@@ -79,6 +79,13 @@ func (web *WebDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 	web.consLck.Unlock()
 	web.accept <- conn
 	raw = NewCopyPipable(basic)
+	if pipe != nil {
+		err = raw.Pipe(pipe)
+		if err != nil {
+			conn.Close()
+			basic.Close()
+		}
+	}
 	return
 }
 

@@ -147,7 +147,7 @@ func (c *CmdDialer) onCmdPaused(r *ReusableRWC) {
 }
 
 //Dial will start command and pipe to stdin/stdout
-func (c *CmdDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
+func (c *CmdDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (raw Conn, err error) {
 	remote, err := url.Parse(uri)
 	if err != nil {
 		return
@@ -255,6 +255,9 @@ func (c *CmdDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 		reusable.Reused = len(reuse) > 0 && c.Reuse > 0
 		reusable.OnPaused = c.onCmdPaused
 		raw = reusable
+		if pipe != nil {
+			err = reusable.Pipe(pipe)
+		}
 	}
 	return
 }
@@ -292,6 +295,7 @@ func (c *CombinedRWC) Close() (err error) {
 type ReusableRWC struct {
 	Raw      io.ReadWriteCloser
 	paused   uint32
+	piped    uint32
 	Name     string
 	Reused   bool
 	Last     int64
@@ -362,5 +366,18 @@ func (r *ReusableRWC) Destory() (err error) {
 }
 
 func (r *ReusableRWC) Pipe(raw io.ReadWriteCloser) (err error) {
+	if atomic.CompareAndSwapUint32(&r.piped, 0, 1) {
+		go r.copyAndClose(r, raw)
+		go r.copyAndClose(raw, r)
+	} else {
+		err = fmt.Errorf("piped")
+	}
 	return
+}
+
+func (r *ReusableRWC) copyAndClose(src io.ReadWriteCloser, dst io.ReadWriteCloser) {
+
+	io.Copy(dst, src)
+	dst.Close()
+	src.Close()
 }

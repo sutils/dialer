@@ -18,7 +18,7 @@ func TestSocksProxy(t *testing.T) {
 		t.Error("error")
 		return
 	}
-	raw, err := dailer.Dial(100, remote)
+	raw, err := dailer.Dial(100, remote, nil)
 	if err != nil {
 		t.Error(err)
 		return

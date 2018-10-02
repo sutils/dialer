@@ -18,7 +18,7 @@ func TestEcho(t *testing.T) {
 		t.Error("error")
 		return
 	}
-	conn, err := dialer.Dial(10, "tcp://echo")
+	conn, err := dialer.Dial(10, "tcp://echo", nil)
 	if err != nil {
 		t.Error(err)
 		return

@@ -2,6 +2,7 @@ package dialer
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"regexp"
 	"sort"
@@ -190,15 +191,14 @@ func (b *BalancedDialer) Matched(uri string) bool {
 	return b.matcher.MatchString(uri)
 }
 
-func (b *BalancedDialer) Dial(sid uint64, uri string) (r Conn, err error) {
+func (b *BalancedDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (r Conn, err error) {
 	for _, f := range b.Filters {
 		if f.Matcher.MatchString(uri) {
 			if f.Access < 1 {
 				err = fmt.Errorf("access deny")
 				return
-			} else {
-				break
 			}
+			break
 		}
 	}
 	target, err := url.Parse(uri)
@@ -284,7 +284,7 @@ func (b *BalancedDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 			used[1]++
 			hostUsed[1]++
 			b.dialersLock <- 1
-			r, err = dialer.Dial(sid, uri)
+			r, err = dialer.Dial(sid, uri, pipe)
 			<-b.dialersLock
 			if err == nil {
 				used[2] = 0
