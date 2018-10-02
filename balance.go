@@ -73,7 +73,7 @@ func NewBalancedDialer() *BalancedDialer {
 		dialersHostUsed: map[string]map[string][]int64{},
 		dialersLock:     make(chan int, 1),
 		Delay:           500,
-		Timeout:         60000,
+		Timeout:         3000,
 		Conf:            util.Map{},
 		matcher:         regexp.MustCompile(".*"),
 	}
@@ -141,7 +141,7 @@ func (b *BalancedDialer) Bootstrap(options util.Map) (err error) {
 	if len(matcher) > 0 {
 		b.matcher, err = regexp.Compile(matcher)
 	}
-	b.Timeout = options.IntValV("timeout", 60000)
+	b.Timeout = options.IntValV("timeout", 3000)
 	b.Delay = options.IntValV("delay", 500)
 	policy := options.AryMapVal("policy")
 	for _, p := range policy {
@@ -208,6 +208,7 @@ func (b *BalancedDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (
 	//
 	begin := util.Now()
 	var showed int64
+	failed := map[string]int{}
 	for {
 		now := util.Now()
 		if now-begin >= b.Timeout {
@@ -220,6 +221,9 @@ func (b *BalancedDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (
 		var limitedNames []string
 		now = util.Now()
 		for _, name := range sortedNames {
+			if failed[name] > 2 {
+				continue
+			}
 			dialer := b.dialers[name]
 			used := b.dialersUsed[name]
 			limit := dialer.Options().AryInt64Val("limit")
@@ -293,6 +297,7 @@ func (b *BalancedDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (
 				log.D("BalancedDialer dail to %v with dialer(%v) success", uri, dialer)
 				return
 			}
+			failed[name]++
 			used[2]++
 			hostUsed[2]++
 			log.D("BalancedDialer using %v and dial to %v fail with %v", dialer, uri, err)
@@ -307,7 +312,7 @@ func (b *BalancedDialer) Dial(sid uint64, uri string, pipe io.ReadWriteCloser) (
 		b.dialersLock <- 1
 		now = util.Now()
 		if now-showed > 3000 {
-			log.D("BalancedDialer dial to %v is waiting", uri)
+			log.D("BalancedDialer dial to %v is waiting to connect", uri)
 			showed = now
 		}
 		time.Sleep(time.Duration(b.Delay) * time.Millisecond)

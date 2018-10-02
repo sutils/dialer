@@ -390,3 +390,10 @@ func TestBalancedDialerLimit(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestXX(t *testing.T) {
+	xx := make(chan int, 1)
+	xx <- 1
+	close(xx)
+	<-xx
+}
