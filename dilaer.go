@@ -83,6 +83,19 @@ func (p *Pool) Bootstrap(options util.Map) error {
 	if options.IntValV("standard", 0) > 0 {
 		p.Dialers = append(p.Dialers, NewCmdDialer(), NewEchoDialer(),
 			NewWebDialer(), NewTCPDialer())
+	} else {
+		if options.IntValV("cmd", 0) > 0 {
+			p.Dialers = append(p.Dialers, NewCmdDialer())
+		}
+		if options.IntValV("echo", 0) > 0 {
+			p.Dialers = append(p.Dialers, NewEchoDialer())
+		}
+		if options.IntValV("web", 0) > 0 {
+			p.Dialers = append(p.Dialers, NewWebDialer())
+		}
+		if options.IntValV("tcp", 0) > 0 {
+			p.Dialers = append(p.Dialers, NewTCPDialer())
+		}
 	}
 	return nil
 }

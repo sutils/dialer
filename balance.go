@@ -165,7 +165,7 @@ func (b *BalancedDialer) Bootstrap(options util.Map) (err error) {
 		dtype := option.StrVal("type")
 		dialer := NewDialer(dtype)
 		if dialer == nil {
-			return fmt.Errorf("create dialer fail by %v", util.S2Json(option))
+			return fmt.Errorf("create dialer fail with type(%v) not supported by %v", dtype, util.S2Json(option))
 		}
 		err := dialer.Bootstrap(option)
 		if err != nil {
