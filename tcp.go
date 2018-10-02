@@ -49,6 +49,9 @@ func (t *TCPDialer) Dial(sid uint64, uri string) (raw Conn, err error) {
 	if err == nil {
 		var dialer net.Dialer
 		bind := remote.Query().Get("bind")
+		if len(bind) < 1 && t.conf != nil {
+			bind = t.conf.StrVal("bind")
+		}
 		if len(bind) > 0 {
 			dialer.LocalAddr, err = net.ResolveTCPAddr("tcp", bind)
 			if err != nil {
