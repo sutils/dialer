@@ -40,10 +40,15 @@ func (m *MapIntSorter) Swap(i, j int) {
 	m.List[i], m.List[j] = m.List[j], m.List[i]
 }
 
-type Policy struct {
+type BalancedPolicy struct {
 	Matcher *regexp.Regexp
 	Scope   string
 	Limit   []int64
+}
+
+type BalancedFilter struct {
+	Matcher *regexp.Regexp
+	Access  int
 }
 
 type BalancedDialer struct {
@@ -52,7 +57,8 @@ type BalancedDialer struct {
 	dialersUsed     map[string][]int64            //map key to [begin,used,fail]
 	dialersHostUsed map[string]map[string][]int64 //map key/host to [begin,used,fail]
 	dialersLock     chan int
-	PolicyList      []*Policy
+	PolicyList      []*BalancedPolicy
+	Filters         []*BalancedFilter
 	Delay           int64
 	Timeout         int64
 	Conf            util.Map
@@ -87,9 +93,20 @@ func (b *BalancedDialer) AddPolicy(matcher string, limit []int64) (err error) {
 	}
 	reg, err := regexp.Compile(matcher)
 	if err == nil {
-		b.PolicyList = append(b.PolicyList, &Policy{
+		b.PolicyList = append(b.PolicyList, &BalancedPolicy{
 			Matcher: reg,
 			Limit:   limit,
+		})
+	}
+	return
+}
+
+func (b *BalancedDialer) AddFilter(matcher string, access int) (err error) {
+	reg, err := regexp.Compile(matcher)
+	if err == nil {
+		b.Filters = append(b.Filters, &BalancedFilter{
+			Matcher: reg,
+			Access:  access,
 		})
 	}
 	return
@@ -132,6 +149,13 @@ func (b *BalancedDialer) Bootstrap(options util.Map) (err error) {
 			return
 		}
 	}
+	filter := options.AryMapVal("filter")
+	for _, f := range filter {
+		err = b.AddFilter(f.StrVal("matcher"), int(f.IntVal("access")))
+		if err != nil {
+			return
+		}
+	}
 	<-b.dialersLock
 	defer func() {
 		b.dialersLock <- 1
@@ -167,6 +191,16 @@ func (b *BalancedDialer) Matched(uri string) bool {
 }
 
 func (b *BalancedDialer) Dial(sid uint64, uri string) (r Conn, err error) {
+	for _, f := range b.Filters {
+		if f.Matcher.MatchString(uri) {
+			if f.Access < 1 {
+				err = fmt.Errorf("access deny")
+				return
+			} else {
+				break
+			}
+		}
+	}
 	target, err := url.Parse(uri)
 	if err != nil {
 		return
@@ -203,7 +237,7 @@ func (b *BalancedDialer) Dial(sid uint64, uri string) (r Conn, err error) {
 			}
 		}
 		//do host policy
-		var policy *Policy
+		var policy *BalancedPolicy
 		for _, p := range b.PolicyList {
 			if p.Matcher.MatchString(uri) {
 				policy = p
